@@ -1,39 +1,49 @@
 const request = require('supertest');
 const app = require('../service');
-const { createAdminUser, loginUser } = require('../test_utils/testUtils');
+const { createAdminUser, loginUser, registerDinerUser, randomName } = require('../test_utils/testUtils');
 
-const testUser = { name: 'pizza diner', email: 'reg@test.com', password: 'a' };
-let userToken;
+let adminToken;
+let franchiseeUser, franchiseeToken;
+
 beforeAll(async () => {
-    testUser.email = Math.random().toString(36).substring(2, 12) + '@test.com';
-    const registerRes = await request(app).post('/api/auth').send(testUser);
-    userToken = registerRes.body.token;
+    const admin = await createAdminUser();
+    adminToken = await loginUser(app, admin);
+
+    ({ user: franchiseeUser, token: franchiseeToken } = await registerDinerUser(app));
 });
 
 test('get franchise', async () => {
     const res = await request(app).get('/api/franchise?page=0&limit=10&name=*');
 
-    expect(res.body).toHaveProperty("franchises");
+    expect(res.body).toHaveProperty('franchises');
 });
 
-/*
-  {
-    method: 'POST',
-    path: '/api/franchise',
-    requiresAuth: true,
-    description: 'Create a new franchise',
-    example: `curl -X POST localhost:3000/api/franchise -H 'Content-Type: application/json' -H 'Authorization: Bearer tttttt' -d '{"name": "pizzaPocket", "admins": [{"email": "f@jwt.com"}]}'`,
-    response: { name: 'pizzaPocket', admins: [{ email: 'f@jwt.com', id: 4, name: 'pizza franchisee' }], id: 1 },
-  },
-*/
+test('create franchise as non-admin is rejected', async () => {
+    const franchise = { name: 'testFranchise-' + randomName(), admins: [{ email: franchiseeUser.email }] };
+    const res = await request(app).post('/api/franchise').set('Authorization', `Bearer ${franchiseeToken}`).send(franchise);
 
-test('create franchise', async () => {
-    const admin = await createAdminUser();
-    const adminToken = await loginUser(app, admin);
+    expect(res.status).toBe(403);
+});
 
-    const franchise = { "name": "testFranchise", "admins": [{ "email": testUser.email }] };
-    const res = await request(app).post('/api/franchise').set('Authorization', `Bearer ${adminToken}`).send(franchise);
+test('create franchise, get user franchises, create store, delete store, delete franchise', async () => {
+    const franchise = { name: 'testFranchise-' + randomName(), admins: [{ email: franchiseeUser.email }] };
+    const createRes = await request(app).post('/api/franchise').set('Authorization', `Bearer ${adminToken}`).send(franchise);
+    expect(createRes.body).toHaveProperty('id');
 
-    expect(res.body).toHaveProperty('name');
-    expect(res.body.name).toBe('testFranchise');
+    const userFranchisesRes = await request(app).get(`/api/franchise/${franchiseeUser.id}`).set('Authorization', `Bearer ${franchiseeToken}`);
+    expect(userFranchisesRes.body.some((f) => f.id === createRes.body.id)).toBe(true);
+
+    const storeRes = await request(app)
+        .post(`/api/franchise/${createRes.body.id}/store`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ name: 'SLC' });
+    expect(storeRes.body).toMatchObject({ franchiseId: createRes.body.id, name: 'SLC' });
+
+    const deleteStoreRes = await request(app)
+        .delete(`/api/franchise/${createRes.body.id}/store/${storeRes.body.id}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+    expect(deleteStoreRes.body).toEqual({ message: 'store deleted' });
+
+    const deleteFranchiseRes = await request(app).delete(`/api/franchise/${createRes.body.id}`);
+    expect(deleteFranchiseRes.body).toEqual({ message: 'franchise deleted' });
 });
