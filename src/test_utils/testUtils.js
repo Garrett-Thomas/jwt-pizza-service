@@ -1,7 +1,7 @@
 const { Role, DB } = require('../database/database.js');
 const request = require('supertest');
 
-export function randomName() {
+function randomName() {
     return Math.random().toString(36).substring(2, 12);
 }
 
@@ -26,4 +26,4 @@ async function registerDinerUser(app) {
     return { user: res.body.user, token: res.body.token };
 }
 
-module.exports = { createAdminUser, loginUser, registerDinerUser };
+module.exports = { createAdminUser, loginUser, registerDinerUser, randomName };
