@@ -53,6 +53,20 @@ test('list users as admin', async () => {
     expect(res.body).toHaveProperty('users');
 });
 
+test('list users returns user details without passwords', async () => {
+    const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.body.users.length).toBeGreaterThan(0);
+    for (const user of res.body.users) {
+        expect(user).toEqual({
+            id: expect.any(Number),
+            name: expect.any(String),
+            email: expect.any(String),
+            roles: expect.any(Array),
+        });
+    }
+});
+
 test('list users unauthorized', async () => {
     const listUsersRes = await request(app).get('/api/user');
     expect(listUsersRes.status).toBe(401);
