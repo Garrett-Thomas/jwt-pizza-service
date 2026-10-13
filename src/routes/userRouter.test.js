@@ -84,6 +84,24 @@ test('list users filters by name', async () => {
     expect(res.body.more).toBe(false);
 });
 
+test('list users paginates', async () => {
+    const unique = randomName();
+    for (let i = 0; i < 3; i++) {
+        await registerNamedUser(`${unique}-${i}`);
+    }
+    const listPage = (page, limit) => request(app).get(`/api/user?page=${page}&limit=${limit}&name=*${unique}*`).set('Authorization', `Bearer ${adminToken}`);
+
+    const first = await listPage(0, 2);
+    expect(first.body.users).toHaveLength(2);
+    expect(first.body.more).toBe(true);
+
+    const second = await listPage(1, 2);
+    expect(second.body.users).toHaveLength(1);
+    expect(second.body.more).toBe(false);
+    expect(second.body.users[0].id).not.toBe(first.body.users[0].id);
+    expect(second.body.users[0].id).not.toBe(first.body.users[1].id);
+});
+
 test('list users', async () => {
     const [user, userToken] = await registerUser(request(app));
     const listUsersRes = await request(app)
