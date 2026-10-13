@@ -72,6 +72,18 @@ test('list users unauthorized', async () => {
     expect(listUsersRes.status).toBe(401);
 });
 
+test('list users filters by name', async () => {
+    const unique = randomName();
+    const [matching] = await registerNamedUser(`${unique}-match`);
+    await registerNamedUser(randomName());
+
+    const res = await request(app).get(`/api/user?name=*${unique}*`).set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.users).toEqual([{ id: matching.id, name: matching.name, email: matching.email, roles: [{ role: 'diner' }] }]);
+    expect(res.body.more).toBe(false);
+});
+
 test('list users', async () => {
     const [user, userToken] = await registerUser(request(app));
     const listUsersRes = await request(app)
@@ -79,6 +91,11 @@ test('list users', async () => {
         .set('Authorization', 'Bearer ' + userToken);
     expect(listUsersRes.status).toBe(200);
 });
+
+async function registerNamedUser(name) {
+    const res = await request(app).post('/api/auth').send({ name, email: `${randomName()}@test.com`, password: 'a' });
+    return [res.body.user, res.body.token];
+}
 
 async function registerUser(service) {
     const testUser = {
