@@ -1,6 +1,6 @@
 const request = require('supertest');
 const app = require('../service');
-const { createAdminUser, loginUser, registerDinerUser } = require('../test_utils/testUtils');
+const { createAdminUser, loginUser, registerDinerUser, randomName } = require('../test_utils/testUtils');
 
 let adminToken;
 let admin;
@@ -46,9 +46,34 @@ test('delete user', async () => {
     expect(res.body).toEqual({ message: 'not implemented' });
 });
 
-test('list users', async () => {
+test('list users as admin', async () => {
     const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('users');
 });
+
+test('list users unauthorized', async () => {
+    const listUsersRes = await request(app).get('/api/user');
+    expect(listUsersRes.status).toBe(401);
+});
+
+test('list users', async () => {
+    const [user, userToken] = await registerUser(request(app));
+    const listUsersRes = await request(app)
+        .get('/api/user')
+        .set('Authorization', 'Bearer ' + userToken);
+    expect(listUsersRes.status).toBe(200);
+});
+
+async function registerUser(service) {
+    const testUser = {
+        name: 'pizza diner',
+        email: `${randomName()}@test.com`,
+        password: 'a',
+    };
+    const registerRes = await service.post('/api/auth').send(testUser);
+    registerRes.body.user.password = testUser.password;
+
+    return [registerRes.body.user, registerRes.body.token];
+}
