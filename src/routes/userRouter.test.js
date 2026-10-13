@@ -102,12 +102,13 @@ test('list users paginates', async () => {
     expect(second.body.users[0].id).not.toBe(first.body.users[1].id);
 });
 
-test('list users', async () => {
+test('list users as non-admin is rejected', async () => {
     const [user, userToken] = await registerUser(request(app));
     const listUsersRes = await request(app)
         .get('/api/user')
         .set('Authorization', 'Bearer ' + userToken);
-    expect(listUsersRes.status).toBe(200);
+    expect(listUsersRes.status).toBe(403);
+    expect(listUsersRes.body).toEqual({ message: 'unauthorized' });
 });
 
 async function registerNamedUser(name) {
