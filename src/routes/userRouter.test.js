@@ -46,7 +46,18 @@ test('delete user as non-admin is rejected', async () => {
     expect(res.body).toEqual({ message: 'unauthorized' });
 });
 
-test('list users as admin', async () => {
+test('delete user as admin', async () => {
+    const [user] = await registerUser(request(app));
+
+    const res = await request(app).delete(`/api/user/${user.id}`).set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ message: 'user deleted' });
+
+    const loginRes = await request(app).put('/api/auth').send(user);
+    expect(loginRes.status).toBe(404);
+});
+
+test('list users as admin',async () => {
     const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
