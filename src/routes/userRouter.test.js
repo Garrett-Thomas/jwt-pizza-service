@@ -57,7 +57,13 @@ test('delete user as admin', async () => {
     expect(loginRes.status).toBe(404);
 });
 
-test('list users as admin',async () => {
+test('delete unknown user', async () => {
+    const res = await request(app).delete('/api/user/999999999').set('Authorization', `Bearer ${adminToken}`);
+
+    expect(res.status).toBe(404);
+});
+
+test('list users as admin', async () => {
     const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
 
     expect(res.status).toBe(200);
