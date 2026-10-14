@@ -63,16 +63,10 @@ test('delete unknown user', async () => {
     expect(res.status).toBe(404);
 });
 
-test('list users as admin', async () => {
-    const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
-
-    expect(res.status).toBe(200);
-    expect(res.body).toHaveProperty('users');
-});
-
 test('list users returns user details without passwords', async () => {
     const res = await request(app).get('/api/user').set('Authorization', `Bearer ${adminToken}`);
 
+    expect(res.status).toBe(200);
     expect(res.body.users.length).toBeGreaterThan(0);
     for (const user of res.body.users) {
         expect(user).toEqual({
@@ -91,8 +85,8 @@ test('list users unauthorized', async () => {
 
 test('list users filters by name', async () => {
     const unique = randomName();
-    const [matching] = await registerNamedUser(`${unique}-match`);
-    await registerNamedUser(randomName());
+    const [matching] = await registerUser(request(app), `${unique}-match`);
+    await registerUser(request(app), randomName());
 
     const res = await request(app).get(`/api/user?name=*${unique}*`).set('Authorization', `Bearer ${adminToken}`);
 
@@ -104,7 +98,7 @@ test('list users filters by name', async () => {
 test('list users paginates', async () => {
     const unique = randomName();
     for (let i = 0; i < 3; i++) {
-        await registerNamedUser(`${unique}-${i}`);
+        await registerUser(request(app), `${unique}-${i}`);
     }
     const listPage = (page, limit) => request(app).get(`/api/user?page=${page}&limit=${limit}&name=*${unique}*`).set('Authorization', `Bearer ${adminToken}`);
 
@@ -128,14 +122,9 @@ test('list users as non-admin is rejected', async () => {
     expect(listUsersRes.body).toEqual({ message: 'unauthorized' });
 });
 
-async function registerNamedUser(name) {
-    const res = await request(app).post('/api/auth').send({ name, email: `${randomName()}@test.com`, password: 'a' });
-    return [res.body.user, res.body.token];
-}
-
-async function registerUser(service) {
+async function registerUser(service, name = 'pizza diner') {
     const testUser = {
-        name: 'pizza diner',
+        name,
         email: `${randomName()}@test.com`,
         password: 'a',
     };
