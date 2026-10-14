@@ -39,11 +39,11 @@ test('update other as non-admin is rejected', async () => {
     expect(res.status).toBe(403);
 });
 
-test('delete user', async () => {
+test('delete user as non-admin is rejected', async () => {
     const res = await request(app).delete(`/api/user/${dinerUser.id}`).set('Authorization', `Bearer ${dinerToken}`);
 
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ message: 'not implemented' });
+    expect(res.status).toBe(403);
+    expect(res.body).toEqual({ message: 'unauthorized' });
 });
 
 test('list users as admin', async () => {
