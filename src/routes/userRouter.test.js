@@ -120,7 +120,7 @@ test('list users paginates', async () => {
 });
 
 test('list users as non-admin is rejected', async () => {
-    const [user, userToken] = await registerUser(request(app));
+    const [, userToken] = await registerUser(request(app));
     const listUsersRes = await request(app)
         .get('/api/user')
         .set('Authorization', 'Bearer ' + userToken);
