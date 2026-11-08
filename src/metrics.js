@@ -17,4 +17,23 @@ function recordEndpointLatency(ms) {
   endpointLatency.max = Math.max(endpointLatency.max, ms);
 }
 
-module.exports = { requests, recordRequest, endpointLatency, recordEndpointLatency };
+// A user counts as active if they made an authenticated request within this window.
+const ACTIVE_USER_WINDOW_MS = 5 * 60 * 1000;
+const lastSeen = new Map();
+
+function recordUserSeen(userId) {
+  lastSeen.set(userId, Date.now());
+}
+
+function getActiveUserCount() {
+  const cutoff = Date.now() - ACTIVE_USER_WINDOW_MS;
+  // Prune expired entries here so the map doesn't grow forever.
+  for (const [userId, seen] of lastSeen) {
+    if (seen < cutoff) {
+      lastSeen.delete(userId);
+    }
+  }
+  return lastSeen.size;
+}
+
+module.exports = { requests, recordRequest, endpointLatency, recordEndpointLatency, recordUserSeen, getActiveUserCount };
