@@ -36,4 +36,42 @@ function getActiveUserCount() {
   return lastSeen.size;
 }
 
-module.exports = { requests, recordRequest, endpointLatency, recordEndpointLatency, recordUserSeen, getActiveUserCount };
+const authAttempts = { successful: 0, failed: 0 };
+
+function recordAuthAttempt(success) {
+  if (success) {
+    authAttempts.successful++;
+  } else {
+    authAttempts.failed++;
+  }
+}
+
+const pizzas = { sold: 0, failures: 0, revenue: 0 };
+const creationLatency = { sum: 0, count: 0, max: 0 };
+
+// `count` is the number of pizzas in the order. A failed order counts as one failure, not `count`.
+function recordPizzaPurchase(success, latencyMs, revenue, count) {
+  if (success) {
+    pizzas.sold += count;
+    pizzas.revenue += revenue;
+  } else {
+    pizzas.failures++;
+  }
+  creationLatency.sum += latencyMs;
+  creationLatency.count++;
+  creationLatency.max = Math.max(creationLatency.max, latencyMs);
+}
+
+module.exports = {
+  requests,
+  recordRequest,
+  endpointLatency,
+  recordEndpointLatency,
+  recordUserSeen,
+  getActiveUserCount,
+  authAttempts,
+  recordAuthAttempt,
+  pizzas,
+  creationLatency,
+  recordPizzaPurchase,
+};
