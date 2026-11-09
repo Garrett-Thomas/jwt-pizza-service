@@ -15,9 +15,10 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
 
 const readers = [];
 if (exportEnabled) {
+  const credentials = Buffer.from(`${config.metrics.accountId}:${config.metrics.apiKey}`).toString('base64');
   const exporter = new OTLPMetricExporter({
     url: config.metrics.endpointUrl,
-    headers: { Authorization: `Bearer ${config.metrics.accountId}:${config.metrics.apiKey}` },
+    headers: { Authorization: `Basic ${credentials}` },
   });
   readers.push(new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: EXPORT_INTERVAL_MS }));
 }
