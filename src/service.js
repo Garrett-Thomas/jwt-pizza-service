@@ -5,10 +5,16 @@ const franchiseRouter = require('./routes/franchiseRouter.js');
 const userRouter = require('./routes/userRouter.js');
 const version = require('./version.json');
 const config = require('./config.js');
+const requestCounter = require('./middlewares/requestCounter.js');
+const latencyTracker = require('./middlewares/latencyTracker.js');
+const activeUserTracker = require('./middlewares/activeUserTracker.js');
 
 const app = express();
+app.use(requestCounter);
+app.use(latencyTracker);
 app.use(express.json());
 app.use(setAuthUser);
+app.use(activeUserTracker);
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
