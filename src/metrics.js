@@ -1,20 +1,47 @@
-const requests = { total: 0, GET: 0, PUT: 0, POST: 0, DELETE: 0 };
+const os = require('os');
+const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
+const { MeterProvider, PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-http');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const config = require('./config.js');
 
-function recordRequest(method) {
-  requests.total++;
-  // Other methods (OPTIONS, HEAD, ...) only count toward the total.
-  if (method in requests) {
-    requests[method]++;
-  }
+const EXPORT_INTERVAL_MS = 10000;
+
+// Only export when Grafana is configured, and never from tests.
+const exportEnabled = Boolean(config.metrics) && process.env.NODE_ENV !== 'test';
+
+// The SDK reports export failures (bad key, wrong URL, ...) through diag, which is silent by default.
+diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.WARN);
+
+const readers = [];
+if (exportEnabled) {
+  const exporter = new OTLPMetricExporter({
+    url: config.metrics.endpointUrl,
+    headers: { Authorization: `Bearer ${config.metrics.accountId}:${config.metrics.apiKey}` },
+  });
+  readers.push(new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: EXPORT_INTERVAL_MS }));
 }
 
-// Running sum/count/max since the last flush, so each interval reports its own average.
-const endpointLatency = { sum: 0, count: 0, max: 0 };
+const meterProvider = new MeterProvider({
+  resource: resourceFromAttributes({ 'service.name': config.metrics?.source ?? 'jwt-pizza-service' }),
+  readers,
+});
+const meter = meterProvider.getMeter('jwt-pizza-service');
+
+const httpRequests = meter.createCounter('http_requests', { description: 'HTTP requests by method' });
+const endpointLatency = meter.createHistogram('endpoint_latency', { unit: 'ms' });
+const authAttempts = meter.createCounter('auth_attempts', { description: 'Login and register attempts by result' });
+const pizzasSold = meter.createCounter('pizzas_sold');
+const pizzaFailures = meter.createCounter('pizza_creation_failures', { description: 'Orders the factory failed to fulfill' });
+const pizzaRevenue = meter.createCounter('pizza_revenue');
+const pizzaLatency = meter.createHistogram('pizza_creation_latency', { unit: 'ms' });
+
+function recordRequest(method) {
+  httpRequests.add(1, { method });
+}
 
 function recordEndpointLatency(ms) {
-  endpointLatency.sum += ms;
-  endpointLatency.count++;
-  endpointLatency.max = Math.max(endpointLatency.max, ms);
+  endpointLatency.record(ms);
 }
 
 // A user counts as active if they made an authenticated request within this window.
@@ -36,42 +63,41 @@ function getActiveUserCount() {
   return lastSeen.size;
 }
 
-const authAttempts = { successful: 0, failed: 0 };
-
 function recordAuthAttempt(success) {
-  if (success) {
-    authAttempts.successful++;
-  } else {
-    authAttempts.failed++;
-  }
+  authAttempts.add(1, { result: success ? 'successful' : 'failed' });
 }
-
-const pizzas = { sold: 0, failures: 0, revenue: 0 };
-const creationLatency = { sum: 0, count: 0, max: 0 };
 
 // `count` is the number of pizzas in the order. A failed order counts as one failure, not `count`.
 function recordPizzaPurchase(success, latencyMs, revenue, count) {
   if (success) {
-    pizzas.sold += count;
-    pizzas.revenue += revenue;
+    pizzasSold.add(count);
+    pizzaRevenue.add(revenue);
   } else {
-    pizzas.failures++;
+    pizzaFailures.add(1);
   }
-  creationLatency.sum += latencyMs;
-  creationLatency.count++;
-  creationLatency.max = Math.max(creationLatency.max, latencyMs);
+  pizzaLatency.record(latencyMs);
 }
 
+function getCpuUsagePercentage() {
+  return Number(((os.loadavg()[0] / os.cpus().length) * 100).toFixed(2));
+}
+
+function getMemoryUsagePercentage() {
+  const totalMemory = os.totalmem();
+  const usedMemory = totalMemory - os.freemem();
+  return Number(((usedMemory / totalMemory) * 100).toFixed(2));
+}
+
+// Observable gauges are sampled by the SDK at each export.
+meter.createObservableGauge('active_users').addCallback((result) => result.observe(getActiveUserCount()));
+meter.createObservableGauge('cpu_usage', { unit: '%' }).addCallback((result) => result.observe(getCpuUsagePercentage()));
+meter.createObservableGauge('memory_usage', { unit: '%' }).addCallback((result) => result.observe(getMemoryUsagePercentage()));
+
 module.exports = {
-  requests,
+  meterProvider,
   recordRequest,
-  endpointLatency,
   recordEndpointLatency,
   recordUserSeen,
-  getActiveUserCount,
-  authAttempts,
   recordAuthAttempt,
-  pizzas,
-  creationLatency,
   recordPizzaPurchase,
 };
