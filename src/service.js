@@ -8,11 +8,13 @@ const config = require('./config.js');
 const requestCounter = require('./middlewares/requestCounter.js');
 const latencyTracker = require('./middlewares/latencyTracker.js');
 const activeUserTracker = require('./middlewares/activeUserTracker.js');
+const logger = require('./logger.js');
 
 const app = express();
 app.use(requestCounter);
 app.use(latencyTracker);
 app.use(express.json());
+app.use(logger.httpLogger);
 app.use(setAuthUser);
 app.use(activeUserTracker);
 app.use((req, res, next) => {
