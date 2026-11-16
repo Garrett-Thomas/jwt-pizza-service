@@ -1,3 +1,4 @@
+const { AsyncLocalStorage } = require('async_hooks');
 const config = require('./config.js');
 
 const REDACTED = '*****';
@@ -13,6 +14,9 @@ const SENSITIVE_PATTERNS = [
   [/(password\s*=\s*)'[^']*'/gi, `$1'${REDACTED}'`],
 ];
 
+// Queries that touch these columns have all of their parameters redacted.
+const SENSITIVE_SQL = /password|token/i;
+
 function sanitize(value) {
   if (typeof value === 'string') {
     return SENSITIVE_PATTERNS.reduce((text, [pattern, replacement]) => text.replace(pattern, replacement), value);
@@ -26,7 +30,68 @@ function sanitize(value) {
   return value;
 }
 
+function levelFor(statusCode) {
+  if (statusCode >= 500) return 'error';
+  if (statusCode >= 400) return 'warn';
+  return 'info';
+}
+
+// res.json hands res.send a serialized string, so parse it to let sanitize see the keys.
+function parseBody(body) {
+  const text = Buffer.isBuffer(body) ? body.toString() : body;
+  if (typeof text !== 'string') return text;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 class Logger {
+  // Carries the current request to code that has no access to it, like the database layer.
+  requestContext = new AsyncLocalStorage();
+
+  // Express middleware. Install after express.json() so the request body is available.
+  httpLogger = (req, res, next) => {
+    let responseBody;
+    const send = res.send;
+    res.send = (body) => {
+      responseBody = body;
+      return send.call(res, body);
+    };
+
+    res.on('finish', () => {
+      this.log(levelFor(res.statusCode), 'http', {
+        method: req.method,
+        path: req.originalUrl,
+        statusCode: res.statusCode,
+        hasAuthHeader: Boolean(req.headers.authorization),
+        user: this.userOf(req),
+        requestBody: req.body,
+        responseBody: parseBody(responseBody),
+      });
+    });
+
+    this.requestContext.run({ req }, next);
+  };
+
+  dbLogger(sql, params) {
+    return this.log('info', 'db', {
+      user: this.userOf(),
+      sql,
+      params: SENSITIVE_SQL.test(sql) && params?.length ? params.map(() => REDACTED) : params,
+    });
+  }
+
+  factoryLogger(requestBody, responseBody, statusCode) {
+    return this.log(levelFor(statusCode), 'factory', { user: this.userOf(), statusCode, requestBody, responseBody });
+  }
+
+  // `err.statusCode` is only set for errors the app threw on purpose, so those are warnings.
+  unhandledErrorLogger(err) {
+    return this.log(levelFor(err.statusCode ?? 500), 'exception', { user: this.userOf(), message: err.message, statusCode: err.statusCode, stack: err.stack });
+  }
+
   log(level, type, data) {
     const entry = sanitize(data);
     return this.send({
@@ -57,6 +122,10 @@ class Logger {
         if (!res.ok) console.log('Failed to send log to Grafana', res.status);
       })
       .catch((err) => console.log('Failed to send log to Grafana', err.message));
+  }
+
+  userOf(req = this.requestContext.getStore()?.req) {
+    return req?.user ? { id: req.user.id, name: req.user.name, email: req.user.email } : undefined;
   }
 }
 
